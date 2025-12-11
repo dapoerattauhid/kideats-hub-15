@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { usePayment } from '@/hooks/usePayment';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Select,
@@ -26,14 +27,16 @@ import {
   ShoppingCart,
   RefreshCw,
   XCircle,
+  Loader2,
 } from 'lucide-react';
 import { OrderStatus } from '@/hooks/useOrders';
 
 type FilterStatus = OrderStatus | 'all';
 
 export default function OrdersPage() {
-  const { orders, ordersLoading, updateOrderStatus, cancelOrder, cart, addToCart, menuItems } = useApp();
+  const { orders, ordersLoading, updateOrderStatus, cancelOrder, cart, addToCart, menuItems, refetchOrders } = useApp();
   const { toast } = useToast();
+  const { initiateMultiplePayment, openPaymentModal, isProcessing } = usePayment();
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
@@ -49,8 +52,15 @@ export default function OrdersPage() {
     );
   };
 
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedOrders(pendingOrders.map(o => o.id));
+    } else {
+      setSelectedOrders([]);
+    }
+  };
+
   const handlePayOrder = async (orderId: string) => {
-    // Redirect to order detail page for Midtrans payment
     navigate(`/dashboard/orders/${orderId}`);
   };
 
@@ -64,17 +74,35 @@ export default function OrdersPage() {
       return;
     }
 
-    // For Midtrans integration, each order needs individual payment
-    toast({
-      title: 'Pembayaran Individual',
-      description: 'Silakan bayar setiap order satu per satu melalui halaman detail order',
-    });
+    const result = await initiateMultiplePayment(selectedOrders);
 
-    // Redirect to first selected order
-    if (selectedOrders.length > 0) {
-      navigate(`/dashboard/orders/${selectedOrders[0]}`);
+    if (result?.snapToken) {
+      openPaymentModal(
+        result.snapToken,
+        () => {
+          // onSuccess
+          setSelectedOrders([]);
+          refetchOrders?.();
+          toast({
+            title: 'Pembayaran Berhasil',
+            description: `${selectedOrders.length} pesanan telah dibayar`,
+          });
+        },
+        () => {
+          // onPending
+          refetchOrders?.();
+        },
+        () => {
+          // onError
+          refetchOrders?.();
+        }
+      );
     }
   };
+
+  const selectedTotal = orders
+    .filter(o => selectedOrders.includes(o.id))
+    .reduce((sum, o) => sum + o.total_amount, 0);
 
   const handleReorder = (order: typeof orders[0]) => {
     if (!order.order_items) return;
@@ -157,21 +185,44 @@ export default function OrdersPage() {
       {/* Bulk Payment */}
       {pendingOrders.length > 0 && (
         <Card variant="bordered" className="border-warning/50 bg-warning/5">
-          <CardContent className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div>
-              <p className="font-semibold">Bayar Beberapa Order Sekaligus</p>
-              <p className="text-sm text-muted-foreground">
-                Pilih order pending yang ingin dibayar bersamaan
-              </p>
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex-1">
+                <p className="font-semibold">Bayar Beberapa Order Sekaligus</p>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Pilih order pending yang ingin dibayar bersamaan
+                </p>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="select-all"
+                    checked={selectedOrders.length === pendingOrders.length && pendingOrders.length > 0}
+                    onCheckedChange={handleSelectAll}
+                  />
+                  <label htmlFor="select-all" className="text-sm cursor-pointer">
+                    Pilih semua ({pendingOrders.length} order pending)
+                  </label>
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                {selectedOrders.length > 0 && (
+                  <span className="text-lg font-bold text-primary">
+                    Total: Rp {selectedTotal.toLocaleString('id-ID')}
+                  </span>
+                )}
+                <Button
+                  variant="warning"
+                  onClick={handlePayMultiple}
+                  disabled={selectedOrders.length === 0 || isProcessing}
+                >
+                  {isProcessing ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <CreditCard className="w-4 h-4 mr-2" />
+                  )}
+                  Bayar {selectedOrders.length > 0 ? `(${selectedOrders.length})` : ''}
+                </Button>
+              </div>
             </div>
-            <Button
-              variant="warning"
-              onClick={handlePayMultiple}
-              disabled={selectedOrders.length === 0}
-            >
-              <CreditCard className="w-4 h-4 mr-2" />
-              Bayar {selectedOrders.length > 0 ? `(${selectedOrders.length})` : ''}
-            </Button>
           </CardContent>
         </Card>
       )}
