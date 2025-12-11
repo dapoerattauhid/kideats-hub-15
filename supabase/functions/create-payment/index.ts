@@ -13,12 +13,18 @@ serve(async (req) => {
   }
 
   try {
-    const { orderId, orderIds } = await req.json()
+    const body = await req.json()
+    const { orderId, orderIds } = body
+    
+    console.log('Received request body:', JSON.stringify(body))
 
     // Support both single orderId and multiple orderIds
-    const idsToProcess = orderIds || (orderId ? [orderId] : [])
+    const idsToProcess = orderIds && orderIds.length > 0 
+      ? orderIds 
+      : (orderId ? [orderId] : [])
 
     if (idsToProcess.length === 0) {
+      console.error('No order IDs provided in request')
       throw new Error('Order ID(s) required')
     }
 
