@@ -1,4 +1,3 @@
-// Edge function v2 - supports bulk payment
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -14,22 +13,11 @@ serve(async (req) => {
   }
 
   try {
-    const body = await req.json()
-    const { orderId, orderIds } = body
-    
-    console.log('Received request body:', JSON.stringify(body))
+    const { orderId } = await req.json()
 
-    // Support both single orderId and multiple orderIds
-    const idsToProcess = orderIds && orderIds.length > 0 
-      ? orderIds 
-      : (orderId ? [orderId] : [])
-
-    if (idsToProcess.length === 0) {
-      console.error('No order IDs provided in request')
-      throw new Error('Order ID(s) required')
+    if (!orderId) {
+      throw new Error('Order ID is required')
     }
-
-    console.log('Processing payment for orders:', idsToProcess)
 
     // Create Supabase client
     const supabaseClient = createClient(
@@ -42,8 +30,8 @@ serve(async (req) => {
       }
     )
 
-    // Fetch all orders
-    const { data: orders, error: orderError } = await supabaseClient
+    // Fetch order details
+    const { data: order, error: orderError } = await supabaseClient
       .from('orders')
       .select(`
         *,
@@ -57,56 +45,36 @@ serve(async (req) => {
           menu_item:menu_items(name)
         )
       `)
-      .in('id', idsToProcess)
-      .eq('status', 'pending')
+      .eq('id', orderId)
+      .single()
 
-    if (orderError || !orders || orders.length === 0) {
-      console.error('Order fetch error:', orderError)
-      throw new Error('Orders not found or not pending')
+    if (orderError || !order) {
+      throw new Error('Order not found')
     }
 
-    console.log('Found orders:', orders.length)
-
-    // Calculate total amount and combine items
-    let totalAmount = 0
-    const allItemDetails: any[] = []
-    const orderIdsStr = orders.map(o => o.id.slice(0, 8)).join('-')
-
-    orders.forEach((order: any) => {
-      totalAmount += order.total_amount
-      order.order_items.forEach((item: any) => {
-        allItemDetails.push({
-          id: item.menu_item_id,
-          price: item.unit_price,
-          quantity: item.quantity,
-          name: `${item.menu_item?.name || 'Menu Item'} (${order.recipient?.name || 'Customer'})`,
-        })
-      })
-    })
-
-    // Create combined order ID for Midtrans
-    const combinedOrderId = orders.length > 1 
-      ? `BULK-${Date.now()}-${orderIdsStr}`
-      : orders[0].id
-
+    // Prepare Midtrans transaction data
     const transactionDetails = {
-      order_id: combinedOrderId,
-      gross_amount: totalAmount,
+      order_id: order.id,
+      gross_amount: order.total_amount,
     }
+
+    const itemDetails = order.order_items.map((item: any) => ({
+      id: item.menu_item_id,
+      price: item.unit_price,
+      quantity: item.quantity,
+      name: item.menu_item?.name || 'Menu Item',
+    }))
 
     const customerDetails = {
-      first_name: orders[0].recipient?.name || 'Customer',
-      email: 'customer@kideats.com',
+      first_name: order.recipient?.name || 'Customer',
+      email: 'customer@kideats.com', // You might want to get this from user profile
     }
 
     const midtransPayload = {
       transaction_details: transactionDetails,
-      item_details: allItemDetails,
+      item_details: itemDetails,
       customer_details: customerDetails,
-      custom_field1: JSON.stringify(idsToProcess), // Store original order IDs
     }
-
-    console.log('Midtrans payload:', JSON.stringify(midtransPayload))
 
     // Call Midtrans Snap API
     const midtransServerKey = Deno.env.get('MIDTRANS_SERVER_KEY')
@@ -128,27 +96,23 @@ serve(async (req) => {
 
     if (!midtransResponse.ok) {
       const errorText = await midtransResponse.text()
-      console.error('Midtrans error:', errorText)
       throw new Error(`Midtrans API error: ${errorText}`)
     }
 
     const midtransData = await midtransResponse.json()
-    console.log('Midtrans response:', midtransData)
 
-    // Update all orders with snap token and payment URL
-    for (const order of orders) {
-      const { error: updateError } = await supabaseClient
-        .from('orders')
-        .update({
-          snap_token: midtransData.token,
-          payment_url: midtransData.redirect_url,
-          transaction_id: combinedOrderId,
-        })
-        .eq('id', order.id)
+    // Update order with snap token and payment URL
+    const { error: updateError } = await supabaseClient
+      .from('orders')
+      .update({
+        snap_token: midtransData.token,
+        payment_url: midtransData.redirect_url,
+        transaction_id: order.id,
+      })
+      .eq('id', orderId)
 
-      if (updateError) {
-        console.error('Failed to update order:', order.id, updateError)
-      }
+    if (updateError) {
+      throw new Error('Failed to update order with payment data')
     }
 
     return new Response(
@@ -156,8 +120,6 @@ serve(async (req) => {
         success: true,
         snapToken: midtransData.token,
         redirectUrl: midtransData.redirect_url,
-        orderIds: idsToProcess,
-        totalAmount,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -166,7 +128,6 @@ serve(async (req) => {
     )
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    console.error('Payment error:', errorMessage)
     return new Response(
       JSON.stringify({
         success: false,

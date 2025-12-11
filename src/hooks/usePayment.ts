@@ -13,10 +13,6 @@ export function usePayment() {
     const { toast } = useToast();
 
     const initiatePayment = async (orderId: string) => {
-        return initiateMultiplePayment([orderId]);
-    };
-
-    const initiateMultiplePayment = async (orderIds: string[]) => {
         setIsProcessing(true);
 
         try {
@@ -29,7 +25,7 @@ export function usePayment() {
 
             // Call Edge Function to create payment
             const { data, error } = await supabase.functions.invoke('create-payment', {
-                body: { orderIds },
+                body: { orderId },
             });
 
             if (error) throw error;
@@ -41,8 +37,6 @@ export function usePayment() {
             return {
                 snapToken: data.snapToken,
                 redirectUrl: data.redirectUrl,
-                orderIds: data.orderIds,
-                totalAmount: data.totalAmount,
             };
         } catch (error: any) {
             console.error('Payment initiation error:', error);
@@ -101,7 +95,6 @@ export function usePayment() {
 
     return {
         initiatePayment,
-        initiateMultiplePayment,
         openPaymentModal,
         isProcessing,
     };
