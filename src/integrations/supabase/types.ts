@@ -50,6 +50,104 @@ export type Database = {
         }
         Relationships: []
       }
+      midtrans_transactions: {
+        Row: {
+          acquirer: string | null
+          approval_code: string | null
+          bank: string | null
+          card_number: string | null
+          card_type: string | null
+          created_at: string
+          eci: string | null
+          error_message: string | null
+          fraud_status: string | null
+          gross_amount: number
+          id: string
+          masked_card: string | null
+          notification_received_at: string | null
+          order_id: string
+          payment_method: string | null
+          payment_type: string | null
+          redirect_html: string | null
+          redirect_url: string | null
+          reference_id: string | null
+          snap_url: string | null
+          status: string
+          three_ds_version: string | null
+          token: string
+          transaction_id: string
+          updated_at: string
+          user_id: string | null
+          webhook_notification_sent: boolean | null
+        }
+        Insert: {
+          acquirer?: string | null
+          approval_code?: string | null
+          bank?: string | null
+          card_number?: string | null
+          card_type?: string | null
+          created_at?: string
+          eci?: string | null
+          error_message?: string | null
+          fraud_status?: string | null
+          gross_amount: number
+          id?: string
+          masked_card?: string | null
+          notification_received_at?: string | null
+          order_id: string
+          payment_method?: string | null
+          payment_type?: string | null
+          redirect_html?: string | null
+          redirect_url?: string | null
+          reference_id?: string | null
+          snap_url?: string | null
+          status?: string
+          three_ds_version?: string | null
+          token: string
+          transaction_id: string
+          updated_at?: string
+          user_id?: string | null
+          webhook_notification_sent?: boolean | null
+        }
+        Update: {
+          acquirer?: string | null
+          approval_code?: string | null
+          bank?: string | null
+          card_number?: string | null
+          card_type?: string | null
+          created_at?: string
+          eci?: string | null
+          error_message?: string | null
+          fraud_status?: string | null
+          gross_amount?: number
+          id?: string
+          masked_card?: string | null
+          notification_received_at?: string | null
+          order_id?: string
+          payment_method?: string | null
+          payment_type?: string | null
+          redirect_html?: string | null
+          redirect_url?: string | null
+          reference_id?: string | null
+          snap_url?: string | null
+          status?: string
+          three_ds_version?: string | null
+          token?: string
+          transaction_id?: string
+          updated_at?: string
+          user_id?: string | null
+          webhook_notification_sent?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "midtrans_transactions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_items: {
         Row: {
           created_at: string
@@ -101,9 +199,12 @@ export type Database = {
           delivery_date: string | null
           id: string
           notes: string | null
+          payment_url: string | null
           recipient_id: string | null
+          snap_token: string | null
           status: string
           total_amount: number
+          transaction_id: string | null
           updated_at: string
           user_id: string | null
         }
@@ -112,9 +213,12 @@ export type Database = {
           delivery_date?: string | null
           id?: string
           notes?: string | null
+          payment_url?: string | null
           recipient_id?: string | null
+          snap_token?: string | null
           status?: string
           total_amount: number
+          transaction_id?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -123,9 +227,12 @@ export type Database = {
           delivery_date?: string | null
           id?: string
           notes?: string | null
+          payment_url?: string | null
           recipient_id?: string | null
+          snap_token?: string | null
           status?: string
           total_amount?: number
+          transaction_id?: string | null
           updated_at?: string
           user_id?: string | null
         }
@@ -241,6 +348,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_admin: { Args: never; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "customer"
