@@ -52,8 +52,62 @@ serve(async (req) => {
             orderStatus = 'pending'
         }
 
-        // Check if order exists first
-        // Validate UUID format first (test notifications have invalid UUIDs)
+        // Check if this is a BULK payment (multiple orders)
+        const isBulkPayment = orderId.startsWith('BULK-')
+        
+        if (isBulkPayment) {
+            // For bulk payments, find all orders with this transaction_id
+            console.log(`Processing bulk payment: ${orderId}`)
+            
+            const { data: orders, error: fetchError } = await supabaseClient
+                .from('orders')
+                .select('id')
+                .eq('transaction_id', orderId)
+
+            if (fetchError) {
+                console.error('Error fetching orders for bulk payment:', fetchError)
+                throw fetchError
+            }
+
+            if (!orders || orders.length === 0) {
+                console.log(`No orders found for bulk payment ${orderId}`)
+                return new Response(
+                    JSON.stringify({ success: true, message: 'No orders found for this transaction' }),
+                    {
+                        status: 200,
+                        headers: { 'Content-Type': 'application/json' },
+                    }
+                )
+            }
+
+            // Update all orders with this transaction_id
+            const orderIds = orders.map(o => o.id)
+            const { error: updateError } = await supabaseClient
+                .from('orders')
+                .update({
+                    status: orderStatus,
+                    updated_at: new Date().toISOString(),
+                })
+                .in('id', orderIds)
+
+            if (updateError) {
+                console.error('Failed to update bulk orders:', updateError)
+                throw updateError
+            }
+
+            console.log(`Bulk payment ${orderId}: Updated ${orderIds.length} orders to status: ${orderStatus}`)
+            console.log('Updated order IDs:', orderIds)
+
+            return new Response(
+                JSON.stringify({ success: true, message: `Updated ${orderIds.length} orders` }),
+                {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                }
+            )
+        }
+
+        // Single order payment - validate UUID format
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
         if (!uuidRegex.test(orderId)) {
