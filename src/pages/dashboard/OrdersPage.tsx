@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { usePayment } from '@/hooks/usePayment';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Select,
@@ -32,8 +33,9 @@ import { OrderStatus } from '@/hooks/useOrders';
 type FilterStatus = OrderStatus | 'all';
 
 export default function OrdersPage() {
-  const { orders, ordersLoading, updateOrderStatus, cancelOrder, cart, addToCart, menuItems } = useApp();
+  const { orders, ordersLoading, updateOrderStatus, cancelOrder, cart, addToCart, menuItems, refetchOrders } = useApp();
   const { toast } = useToast();
+  const { initiateMultiplePayment, openPaymentModal, isProcessing } = usePayment();
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
@@ -64,15 +66,22 @@ export default function OrdersPage() {
       return;
     }
 
-    // For Midtrans integration, each order needs individual payment
-    toast({
-      title: 'Pembayaran Individual',
-      description: 'Silakan bayar setiap order satu per satu melalui halaman detail order',
-    });
-
-    // Redirect to first selected order
-    if (selectedOrders.length > 0) {
-      navigate(`/dashboard/orders/${selectedOrders[0]}`);
+    const result = await initiateMultiplePayment(selectedOrders);
+    
+    if (result?.snapToken) {
+      openPaymentModal(
+        result.snapToken,
+        () => {
+          setSelectedOrders([]);
+          refetchOrders();
+        },
+        () => {
+          refetchOrders();
+        },
+        () => {
+          refetchOrders();
+        }
+      );
     }
   };
 
@@ -167,10 +176,10 @@ export default function OrdersPage() {
             <Button
               variant="warning"
               onClick={handlePayMultiple}
-              disabled={selectedOrders.length === 0}
+              disabled={selectedOrders.length === 0 || isProcessing}
             >
               <CreditCard className="w-4 h-4 mr-2" />
-              Bayar {selectedOrders.length > 0 ? `(${selectedOrders.length})` : ''}
+              {isProcessing ? 'Memproses...' : `Bayar ${selectedOrders.length > 0 ? `(${selectedOrders.length})` : ''}`}
             </Button>
           </CardContent>
         </Card>

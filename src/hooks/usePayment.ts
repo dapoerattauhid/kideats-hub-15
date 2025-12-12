@@ -16,14 +16,12 @@ export function usePayment() {
         setIsProcessing(true);
 
         try {
-            // Get current session
             const { data: { session } } = await supabase.auth.getSession();
 
             if (!session) {
                 throw new Error('User not authenticated');
             }
 
-            // Call Edge Function to create payment
             const { data, error } = await supabase.functions.invoke('create-payment', {
                 body: { orderId },
             });
@@ -43,6 +41,47 @@ export function usePayment() {
             toast({
                 title: 'Error',
                 description: error.message || 'Gagal membuat pembayaran',
+                variant: 'destructive',
+            });
+            return null;
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const initiateMultiplePayment = async (orderIds: string[]) => {
+        setIsProcessing(true);
+
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+
+            if (!session) {
+                throw new Error('User not authenticated');
+            }
+
+            console.log('Initiating bulk payment for orders:', orderIds);
+
+            const { data, error } = await supabase.functions.invoke('create-payment', {
+                body: { orderIds },
+            });
+
+            console.log('Bulk payment response:', data, error);
+
+            if (error) throw error;
+
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to create bulk payment');
+            }
+
+            return {
+                snapToken: data.snapToken,
+                redirectUrl: data.redirectUrl,
+            };
+        } catch (error: any) {
+            console.error('Bulk payment initiation error:', error);
+            toast({
+                title: 'Error',
+                description: error.message || 'Gagal membuat pembayaran bulk',
                 variant: 'destructive',
             });
             return null;
@@ -95,6 +134,7 @@ export function usePayment() {
 
     return {
         initiatePayment,
+        initiateMultiplePayment,
         openPaymentModal,
         isProcessing,
     };
